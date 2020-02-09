@@ -44,6 +44,3 @@ vignettes/*.pdf
 
 # zip download
 *.zip
-
-# rsconnect
-/rsconnect/
