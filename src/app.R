@@ -139,7 +139,7 @@ source("prep_coffeedata.R", local = FALSE)
 library(shiny)
 {
   ui <- fluidPage(
-    tags$h2("IBM's Coffe chain"),
+    tags$h2("IBM's Coffee chain"),
     fluidRow(
       verbatimTextOutput("macro"),
       column(
