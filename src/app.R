@@ -53,7 +53,7 @@ source("prep_coffeedata.R", local = FALSE)
   pastries <- read.csv("April_Sales/pastry inventory.csv")
   products <- read.csv("April_Sales/product.csv")
   targets <- read.csv("April_Sales/sales targets.csv")
-  staff <- read.csv("April_Sales/staff.csv")
+  #staff <- read.csv("April_Sales/staff.csv")
   
   # useable data
   outletSales <- merge(x=sales, y=products, by="product_id")
@@ -122,12 +122,78 @@ source("prep_coffeedata.R", local = FALSE)
   }
 }
 
-
-
+## extending data through random draws
+{
+  # get info about mean and sd
+  truValues <- data.frame(getInputs("3"), getInputs("5"), getInputs("8"))
+  truValues <- rbind.data.frame(truValues, c(
+    aggregate(outletSales, outletSales$sales_outlet_id=="3", "salesValue"), 
+    aggregate(outletSales, outletSales$sales_outlet_id=="5", "salesValue"), 
+    aggregate(outletSales, outletSales$sales_outlet_id=="8", "salesValue"))
+    )
+  colnames(truValues) <- c("3", "5", "8")
+  pastryDist <- c(mean(as.numeric(truValues[1,])), sd(truValues[1,]))
+  promoDist <- c(mean(as.numeric(truValues[2,])), sd(truValues[2,]))
+  salesDist <- c(mean(as.numeric(truValues[3,])), sd(truValues[3,]))
+  
+  # fitting a normal distribution and drawing additional input combinations
+  # extend truInput by artificial observations to create 8 usable combinations
+  simValues <- data.frame(matrix(nrow = 3, ncol = 8))
+  colnames(simValues) <- c("3", "4", "5", "6", "7", "8", "9", "10")
+  for (i in 3:10) {
+    if (i %in% colnames(truValues)) {
+      simValues[paste0(i)] <- truValues[paste0(i)]
+    } else {
+      simValues[1,paste0(i)] <- rnorm(1, mean = pastryDist[1], sd = pastryDist[2])
+      simValues[2,paste0(i)] <- rnorm(1, mean = promoDist[1], sd = promoDist[2])
+      simValues[3,paste0(i)] <- rnorm(1, mean = salesDist[1], sd = salesDist[2])
+    }
+  }
+  valueVec <- t(simValues)
+  colnames(valueVec) <- c("Pastry expenses", "Promo value", "Sales")
+}
 
 ## DEA
-#library("rDEA")
-
+library("rDEA")
+{
+  inps <- valueVec[,c("Pastry expenses", "Promo value")]
+  outs <- valueVec[,"Sales"]
+  anoeff <- dea(
+    XREF = inps,
+    YREF = outs,
+    X = inps, 
+    Y = outs, 
+    model = "input", 
+    RTS =  "constant"
+  )
+  
+  # dea plot
+  simEfficiency <- data.frame(matrix(nrow = 2, ncol = 8))
+  colnames(simEfficiency) <- colnames(simValues)
+  for (i in colnames(simValues)) {
+    simEfficiency[1,paste0(i)] <- simValues[1, i]/simValues[3, i]
+    simEfficiency[2,paste0(i)] <- simValues[2, i]/simValues[3, i]
+  }
+  
+  # get eff frontier
+  getFrontier <- function(dtaEA, efficiencies) {
+    useVertices <- t(efficiencies[,dtaEA$thetaOpt==1])
+    useVertices <- useVertices[order(useVertices[,1]),]
+    lineVertices <- rbind.data.frame(
+      useVertices[1,]+c(0,sd(useVertices[,2])),
+      useVertices,
+      useVertices[nrow(useVertices),]+c(sd(useVertices[,1]), 0)
+    )
+    return(lineVertices)
+  }
+  deaFrontier <- getFrontier(anoeff, simEfficiency)
+  
+  selectEffpoint <- function(effs, id) {
+    pos <- effs[id]
+    points(pos[1,1], pos[2,1], pch = 1, lwd = 10, col = "black")
+    points(pos[1,1], pos[2,1], pch = 1, lwd = 7, col = "red")
+  }
+}
 
 
 
@@ -180,20 +246,24 @@ library(shiny)
       ),
       column(
         width = 4,
-        "DEA efficiency"
+        plotOutput("efficiency")
       ),
       column(
         width = 4,
-        "efficiency analysis"
+        plotOutput("dea"), 
+        "button to reroll simulated efficiencies"
       )
     ),
     fluidRow(
       verbatimTextOutput("promo"),
       column(
         width = 4,
-        "sale of items that received a promo"
+        "difference vs value and quantity"
       )
     ),
+    
+    
+    verbatimTextOutput("end"),
     tags$p("Based on the artificial coffe chain data by the Cognos Analytics-team at IBM")
   )
   
@@ -265,7 +335,46 @@ library(shiny)
       "To conduct an efficiency analysis we need a quantifyable input effort. For this data the possibilities are: the amount of pastries on display to encourage a purchase of one or a related product from store, the number of employees or the value of the current promo campaign as a measure of input to attract customers."
     )
     
+    output$efficiency <- renderPlot(
+      barplot(
+        anoeff$thetaOpt, 
+        names.arg = c(rownames(valueVec)), 
+        ylim = c(min(anoeff$thetaOpt)-.1,1),
+        main = "Efficiency of Outlets",
+        xpd = FALSE,
+        col = "dodgerblue"
+      )
+    )
     
+    currentEffpoint <- reactive(selectEffpoint(simEfficiency, input$outletSelect))
+    output$dea <- renderPlot(
+      {
+        plot(
+          x = c(simEfficiency[1,]),
+          y = c(simEfficiency[2,]), 
+          main = "DEA",
+          xlab = "pastry expenses/sales", 
+          ylab = "promo volume/sales",
+          xlim = c(
+            min(simEfficiency[1,]) - sd(simEfficiency[1,])/5,
+            max(simEfficiency[1,]) + sd(simEfficiency[1,])/5
+          ),
+          ylim = c(
+            min(simEfficiency[2,]) - sd(simEfficiency[1,])/5,
+            max(simEfficiency[2,]) + sd(simEfficiency[1,])/5
+          )
+        )
+        currentEffpoint()
+        lines(x=c(deaFrontier[,1]), y=c(deaFrontier[,2]), col = "red", lwd = 5)
+        text(
+          x = c(simEfficiency[1,] + sd(simEfficiency[1,])/10),
+          y = c(simEfficiency[2,] + sd(simEfficiency[2,])/10), 
+          labels = colnames(simEfficiency)
+        )
+      }
+    )
+    
+    output$end <- renderText("end")
     output$promo <- renderText("effects of a promotion")
   }
 }
