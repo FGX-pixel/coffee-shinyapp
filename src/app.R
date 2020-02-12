@@ -46,14 +46,14 @@ source("prep_coffeedata.R", local = FALSE)
 # load tables
 {
   sales <- read.csv("April_Sales/201904 sales reciepts.csv")
-  #customers <- read.csv("April_Sales/customer.csv")
-  #dates <- read.csv("April_Sales/Dates.csv")
-  #generations <- read.csv("April_Sales/generations.csv")
+  # customers <- read.csv("April_Sales/customer.csv")
+  # dates <- read.csv("April_Sales/Dates.csv")
+  # generations <- read.csv("April_Sales/generations.csv")
   outlets <- read.csv("April_Sales/sales_outlet.csv")
   pastries <- read.csv("April_Sales/pastry inventory.csv")
   products <- read.csv("April_Sales/product.csv")
   targets <- read.csv("April_Sales/sales targets.csv")
-  #staff <- read.csv("April_Sales/staff.csv")
+  # staff <- read.csv("April_Sales/staff.csv")
   
   # useable data
   outletSales <- merge(x=sales, y=products, by="product_id")
@@ -127,11 +127,16 @@ source("prep_coffeedata.R", local = FALSE)
   # get info about mean and sd
   truValues <- data.frame(getInputs("3"), getInputs("5"), getInputs("8"))
   truValues <- rbind.data.frame(truValues, c(
-    aggregate(outletSales, outletSales$sales_outlet_id=="3", "salesValue"), 
-    aggregate(outletSales, outletSales$sales_outlet_id=="5", "salesValue"), 
-    aggregate(outletSales, outletSales$sales_outlet_id=="8", "salesValue"))
+    aggregate(outletSales, outletSales$sales_outlet_id=="3", "quantity"), 
+    aggregate(outletSales, outletSales$sales_outlet_id=="5", "quantity"), 
+    aggregate(outletSales, outletSales$sales_outlet_id=="8", "quantity"))
     )
   colnames(truValues) <- c("3", "5", "8")
+  # prepare simulation without disrupting means
+  truValueCorsOne <- c(
+    cor(as.numeric(truValues[1,]), as.numeric(truValues[2,])), 
+    cor(as.numeric(truValues[1,]), as.numeric(truValues[3,]))
+  )
   pastryDist <- c(mean(as.numeric(truValues[1,])), sd(truValues[1,]))
   promoDist <- c(mean(as.numeric(truValues[2,])), sd(truValues[2,]))
   salesDist <- c(mean(as.numeric(truValues[3,])), sd(truValues[3,]))
@@ -144,20 +149,23 @@ source("prep_coffeedata.R", local = FALSE)
     if (i %in% colnames(truValues)) {
       simValues[paste0(i)] <- truValues[paste0(i)]
     } else {
-      simValues[1,paste0(i)] <- rnorm(1, mean = pastryDist[1], sd = pastryDist[2])
-      simValues[2,paste0(i)] <- rnorm(1, mean = promoDist[1], sd = promoDist[2])
-      simValues[3,paste0(i)] <- rnorm(1, mean = salesDist[1], sd = salesDist[2])
+      simValues[1,paste0(i)] <- max(0, rnorm(1, mean = pastryDist[1], sd = pastryDist[2]))
+      simValues[2,paste0(i)] <- max(0, rnorm(1, mean = promoDist[1] + (pastryDist[1]-simValues[1,paste0(i)])*truValueCorsOne[1], 
+                                      sd = promoDist[2]))
+      # min of 0.1 to avoid a divide by 0
+      simValues[3,paste0(i)] <- max(0.1, rnorm(1, mean = salesDist[1] + (pastryDist[1]-simValues[1,paste0(i)])*truValueCorsOne[2], 
+                                      sd = salesDist[2]))
     }
   }
   valueVec <- t(simValues)
-  colnames(valueVec) <- c("Pastry expenses", "Promo value", "Sales")
+  colnames(valueVec) <- c("Pastry expenses", "Promo value", "Quantity")
 }
 
 ## DEA
 library("rDEA")
 {
   inps <- valueVec[,c("Pastry expenses", "Promo value")]
-  outs <- valueVec[,"Sales"]
+  outs <- valueVec[,"Quantity"]
   anoeff <- dea(
     XREF = inps,
     YREF = outs,
@@ -179,10 +187,11 @@ library("rDEA")
   getFrontier <- function(dtaEA, efficiencies) {
     useVertices <- t(efficiencies[,dtaEA$thetaOpt==1])
     useVertices <- useVertices[order(useVertices[,1]),]
+    
     lineVertices <- rbind.data.frame(
-      useVertices[1,]+c(0,sd(useVertices[,2])),
+      useVertices[1,]+c(0, max(efficiencies[2,])-useVertices[1,2]),
       useVertices,
-      useVertices[nrow(useVertices),]+c(sd(useVertices[,1]), 0)
+      useVertices[nrow(useVertices),]+c(max(efficiencies[1,])-useVertices[nrow(useVertices),1], 0)
     )
     return(lineVertices)
   }
@@ -237,7 +246,14 @@ library(shiny)
       ),
       column(
         width = 4,
-        plotOutput("outletSales")
+        plotOutput("outletSales"),
+        selectInput("outletValue", 
+                    label = "Displayed data", 
+                    list(
+                      "Sales in US$" = "salesvalue",
+                      "Quantity of consumer interactions" = "quantity"
+                    )
+        )
       ),
       column(
         width = 4,
@@ -246,28 +262,42 @@ library(shiny)
       ),
       column(
         width = 4,
-        plotOutput("efficiency")
+        plotOutput("efficiency"), 
+        actionButton("reroll", "Reroll simulation")
       ),
       column(
         width = 4,
-        plotOutput("dea"), 
-        "button to reroll simulated efficiencies"
+        plotOutput("dea")
       )
     ),
     fluidRow(
       verbatimTextOutput("promo"),
       column(
         width = 4,
-        "difference vs value and quantity"
+        "difference in difference analysis of time series"
       )
     ),
     
     
     verbatimTextOutput("end"),
+    tags$a("Project page",
+           href = "https://fgx-pixel.github.io/pages/coffee_app.html"), tags$br(),
     tags$p("Based on the artificial coffe chain data by the Cognos Analytics-team at IBM")
   )
   
+  
+  
+  
+  
+  
+  
+  
+  
   server <- function(input, output, session) {
+    
+    #######################
+    ### aggregate level ###
+    
     output$macro <- renderText("Chain level")
     output$aggsales <- renderPlot(
       {
@@ -297,6 +327,8 @@ library(shiny)
       }
     )
     
+    ###################
+    ### micro level ###
     
     output$micro <- renderText("Outlet level")
     
@@ -323,16 +355,28 @@ library(shiny)
     currentInputs <- reactive(getInputs(input$outletSelect))
     output$inputs <- renderPlot(
       {
+        par(mfrow = c(2,1))
         barplot(
-          currentInputs(), 
-          names.arg = c("Pastries", "Promo value"), 
-          main = paste("Inputs for store: ", input$outletSelect), 
+          main = "Input effort",
+          currentInputs()[1],
+          horiz = TRUE,
+          names.arg = "Pastries",
+          xlim = c(max(0, min(simValues[1,])-sd(simValues[1,])), max(simValues[1,])+sd(simValues[1,])),
+          xpd = FALSE,
+          col = "dodgerblue"
+        )
+        barplot(
+          currentInputs()[2],
+          horiz = TRUE,
+          names.arg = "Promo value",
+          xlim = c(max(0, min(simValues[2,])-sd(simValues[2,])), max(simValues[2,])+sd(simValues[2,])),
+          xpd = FALSE,
           col = "dodgerblue"
         )
       }
     )
     output$inputExplain <- renderText(
-      "To conduct an efficiency analysis we need a quantifyable input effort. For this data the possibilities are: the amount of pastries on display to encourage a purchase of one or a related product from store, the number of employees or the value of the current promo campaign as a measure of input to attract customers."
+      "To conduct an efficiency analysis we need a quantifyable input effort. For this data the possibilities are: the amount of pastries on display to encourage a purchase of one or a related product from store or the value of the current promo campaign as a measure of input to attract customers."
     )
     
     output$efficiency <- renderPlot(
@@ -353,8 +397,8 @@ library(shiny)
           x = c(simEfficiency[1,]),
           y = c(simEfficiency[2,]), 
           main = "DEA",
-          xlab = "pastry expenses/sales", 
-          ylab = "promo volume/sales",
+          xlab = "pastry expenses/Quantity", 
+          ylab = "promo volume/Quantity",
           xlim = c(
             min(simEfficiency[1,]) - sd(simEfficiency[1,])/5,
             max(simEfficiency[1,]) + sd(simEfficiency[1,])/5
@@ -367,8 +411,8 @@ library(shiny)
         currentEffpoint()
         lines(x=c(deaFrontier[,1]), y=c(deaFrontier[,2]), col = "red", lwd = 5)
         text(
-          x = c(simEfficiency[1,] + sd(simEfficiency[1,])/10),
-          y = c(simEfficiency[2,] + sd(simEfficiency[2,])/10), 
+          x = c(simEfficiency[1,] + sd(simEfficiency[1,])/8),
+          y = c(simEfficiency[2,] + sd(simEfficiency[2,])/8), 
           labels = colnames(simEfficiency)
         )
       }
