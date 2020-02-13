@@ -44,3 +44,6 @@ vignettes/*.pdf
 
 # zip download
 *.zip
+
+# the saved map
+mapNyc.rds

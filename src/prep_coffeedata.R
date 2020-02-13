@@ -1,4 +1,4 @@
-## obtain data
+# dl and extract data
 {
   # download April_Sales.zip if not there
   if(!file.exists("April_Sales.zip")) {
@@ -10,6 +10,4 @@
     unzip("April_Sales.zip", exdir = "April_Sales")
   }
 }
-
-## join tables
-# inputoutput data for stores
+lll <- 2
