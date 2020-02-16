@@ -1,16 +1,17 @@
 ## get map script
 # needs outlet data loaded
 
-if(!exists("mapNyc.rds")) {
-  nycMap <- readRDS("mapNyc.rds")
+library(OpenStreetMap)
+
+# store locations
+outletLocations <- as.data.frame(projectMercator( lat = outlets$store_latitude, long = outlets$store_longitude))
+outletLocations <- data.frame(outlets$sales_outlet_id, outletLocations)
+outletLocations <- outletLocations[outlets$sales_outlet_type=="retail",]
+
+if(!exists("output/mapNyc.rds")) {
+  nycMap <- readRDS("output/mapNyc.rds")
 } else {
   # get map to avoid later calls
-  library(OpenStreetMap)
-  
-  # store locations
-  outletLocations <- as.data.frame(projectMercator( lat = outlets$store_latitude, long = outlets$store_longitude))
-  outletLocations <- data.frame(outlets$sales_outlet_id, outletLocations)
-  outletLocations <- outletLocations[outlets$sales_outlet_type=="retail",]
   
   # dynamic map selection
   mapMargin <- .05
@@ -21,6 +22,6 @@ if(!exists("mapNyc.rds")) {
   mapp <- openmap(mapCornerUL, mapCornerDR, type = "osm")
   
   # save map
-  saveRDS(mapp, "mapNyc.rds")
-  nycMap <- readRDS("mapNyc.rds")
+  saveRDS(mapp, "output/mapNyc.rds")
+  nycMap <- readRDS("output/mapNyc.rds")
 }

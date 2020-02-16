@@ -39,7 +39,7 @@
       simValues[1,paste0(i)] <- max(0, runif(1, min = pastryDist[1] - sqrt(12)*pastryDist[2], 
                                     max = pastryDist[1] + sqrt(12)*pastryDist[2]))
       simValues[2,paste0(i)] <- max(0, runif(1, min = promoDist[1] - sqrt(12)*promoDist[2], 
-                                    max = promoDist[1] - sqrt(12)*promoDist[2]) + 
+                                    max = promoDist[1] + sqrt(12)*promoDist[2]) + 
                                       (pastryDist[1]-simValues[1,paste0(i)])*truValueCorsOne[1])
       # min of 0.1 to avoid a divide by 0
       simValues[3,paste0(i)] <- max(0.1, runif(1, min = salesDist[1] - sqrt(12)*salesDist[2], 
@@ -77,7 +77,7 @@ library("rDEA")
   ## functions
   # get eff frontier
   getFrontier <- function(dtaEA, efficiencies) {
-    useVertices <- t(efficiencies[,dtaEA$thetaOpt==1])
+    useVertices <- t(efficiencies[,dtaEA$thetaOpt>=0.9999])
     useVertices <- useVertices[order(useVertices[,1]),]
     
     lineVertices <- rbind.data.frame(

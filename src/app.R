@@ -1,42 +1,27 @@
 
 
-## startup
-{
-  # run prep file
-  source("prep_coffeedata.R", local = FALSE)
-  # functions
-  source("utils.R", local = FALSE)
-  # data
-  source("getTables.R", local = FALSE)
-  
-  # scripts
-  source("getMap.R", local = FALSE)
-  # dea-sim
-  source("dea_sim.R", local = FALSE)
-  # diff in diff
-  # promo
-}
-
-
 ## functions
 {
   getInputs <- function(outletId) {
-    lpromo <- outletSales[outletSales$promo_item_yn=="Y",]
+    lpromo <- outletSales[outletSales$promo_item_yn=="Y", c("sales_outlet_id", "promoValue")]
     return(
       c(
-        aggregate(pastryInfo, pastryInfo$sales_outlet_id==outletId, "pastriesValue"), 
-        aggregate(lpromo, pastryInfo$sales_outlet_id==outletId, "salesValue")
+        aggregate(pastryInfo, 
+                  pastryInfo$sales_outlet_id==outletId, 
+                  "pastriesValue"
+                  ), 
+        aggregate(lpromo, lpromo$sales_outlet_id==outletId, "promoValue")
       )
     )
   }
   
   # selecting
-  selectOutletdata <- function(dta, inp) {
-    return(dta[dta$sales_outlet_id==inp,])
+  selectOutletdata <- function(dta, store) {
+    return(dta[dta$sales_outlet_id==store,])
   }
   
-  selectDayAggValues <- function(dta, inp, whatString) {
-    ldta <- dayAggValues(selectOutletdata(dta, inp), whatString)
+  selectDayAggValues <- function(dta, store, whatString) {
+    ldta <- dayAggValues(selectOutletdata(dta, store), whatString)
     return(ldta[order(ldta$days),])
   }
   
@@ -47,6 +32,27 @@
   }
 }
 
+
+## startup
+{
+  # run prep file
+  source("prep_coffeedata.R", local = FALSE)
+  # functions
+  source("utils.R", local = FALSE)
+  # data
+  source("getTables.R", local = FALSE)
+  
+  
+  ## scripts
+  # map
+  source("getMap.R", local = FALSE)
+  # dea-sim
+  source("dea_sim.R", local = FALSE)
+  # diff in diff
+  source("DID.R", local = FALSE)
+  # promo
+  source("timeline.R", local = FALSE)
+}
 
 
 
@@ -98,8 +104,9 @@ library(shiny)
         selectInput("outletValue", 
                     label = "Displayed data", 
                     list(
-                      "Sales in US$" = "salesvalue",
-                      "Quantity of consumer interactions" = "quantity"
+                      "Sales in US$" = "salesValue",
+                      "total quantity sold" = "quantity",
+                      "Promo value in US$" = "promoValue"
                     )
         )
       ),
@@ -110,19 +117,68 @@ library(shiny)
       ),
       column(
         width = 4,
-        plotOutput("efficiency"), 
-        actionButton("reroll", "Reroll simulation")
+        plotOutput("dea")
       ),
       column(
         width = 4,
-        plotOutput("dea")
+        plotOutput("efficiency"), 
+        # actionButton("reroll", "Reroll simulation")
       )
     ),
     fluidRow(
-      verbatimTextOutput("promo"),
+      verbatimTextOutput("did"),
       column(
         width = 4,
-        "difference in difference analysis of time series"
+        plotOutput("didplot")
+      ),
+      column(
+        width = 4,
+        "group info"
+      ),
+      column(
+        width = 4,
+        "persistent effect"
+      )
+    ),
+    fluidRow(
+      verbatimTextOutput("timelineText"),
+      column(
+        width = 8,
+        plotOutput("timeline", 
+                   click = "timeline_click"
+                   ),
+        verbatimTextOutput("clickat")
+      ),
+      column(
+        width = 4,
+        "options", 
+        checkboxGroupInput("timelineScope", 
+                    label = "Please select scope of intervention", 
+                    choices = list(
+                      "Astoia" = "3",
+                      "Lower Manhattan" = "5",
+                      "Hells Kitchen" = "8"
+                    ), 
+                    selected = c("3", "5", "8")
+        ),
+        selectInput("timelineOut", 
+                    label = "Please select target", 
+                    list(
+                      "Sales in US$" = "salesValue",
+                      "total quantity sold" = "quantity"
+                    )
+        ),
+        selectInput("timelineIn", 
+                    label = "Please select decision variable", 
+                    list(
+                      "Promotion" = "promo",
+                      "Displayed pastry quantity" = "pastries"
+                    )
+        ),
+        numericInput("timelineNum", 
+                     "Effort multiplier", 
+                     value = 1
+        )
       )
     ),
     
@@ -142,6 +198,7 @@ library(shiny)
   
   
   server <- function(input, output, session) {
+    
     
     #######################
     ### aggregate level ###
@@ -175,6 +232,7 @@ library(shiny)
       }
     )
     
+    
     ###################
     ### micro level ###
     
@@ -192,10 +250,10 @@ library(shiny)
       }
     )
     
-    currentDayValues <- reactive(selectDayAggValues(outletSales, input$outletSelect, "salesValue"))
+    currentDayValues <- reactive(selectDayAggValues(outletSales, input$outletSelect, input$outletValue))
     output$outletSales <- renderPlot(
       {
-        plot(currentDayValues(), main = "Sales", xlab = "Date", ylab = "Sales in US$", col = "darkseagreen")
+        plot(currentDayValues(), main = input$outletValue, xlab = "Date", ylab = "Value", col = "darkseagreen")
         lines(currentDayValues()[,2], col = "darkseagreen", lwd = 5)
       }
     )
@@ -223,20 +281,16 @@ library(shiny)
         )
       }
     )
+    
     output$inputExplain <- renderText(
       "To conduct an efficiency analysis we need a quantifyable input effort. For this data the possibilities are: the amount of pastries on display to encourage a purchase of one or a related product from store or the value of the current promo campaign as a measure of input to attract customers."
     )
     
-    output$efficiency <- renderPlot(
-      barplot(
-        anoeff$thetaOpt, 
-        names.arg = c(rownames(valueVec)), 
-        ylim = c(min(anoeff$thetaOpt)-.1,1),
-        main = "Efficiency of Outlets",
-        xpd = FALSE,
-        col = "dodgerblue"
-      )
-    )
+    
+    ###########
+    ### DEA ###
+    
+    # todo intro and tutorial
     
     currentEffpoint <- reactive(selectEffpoint(simEfficiency, input$outletSelect))
     output$dea <- renderPlot(
@@ -266,8 +320,68 @@ library(shiny)
       }
     )
     
+    output$efficiency <- renderPlot(
+      barplot(
+        anoeff$thetaOpt, 
+        names.arg = c(rownames(valueVec)), 
+        ylim = c(min(anoeff$thetaOpt)-.1,1),
+        main = "Efficiency of Outlets",
+        xpd = FALSE,
+        col = "dodgerblue"
+      )
+    )
+    
+    # observeEvent(input$reroll, dostuff)
+    
+    
+    ###########
+    ### DID ###
+    
+    output$did <- renderText("Difference in difference, (under construction)")
+    
+    output$didplot <- renderPlot(
+      {
+        plot(rbind(ctrlG, treatG), main = "", xlab = "Date", ylab = "Value")
+        lines(ctrlG[2], col = "darkseagreen", lwd = 5)
+        lines(treatG[2], col = "dodgerblue", lwd = 5)
+        legend(
+          "topright",
+          c("control", "promo"),
+          fill = c("darkseagreen", "dodgerblue")
+        )
+      }
+    )
+    # todo barplots
+    # todo text for persistent effect
+    
+    
+    ################
+    ### Timeline ###
+    
+    output$timelineText <- renderText("Timeline planning, (under construction)")
+    
+    # todo reactive aggregate dayvalues
+    # todo reactive segment selection and visual feedback
+    # todo reactive prognosis and ma
+    
+    output$timeline <- renderPlot(
+      {
+        plot(currentDayValues(), main = "Timeline", xlab = "Date", ylab = "Value", col = "darkseagreen")
+        plot(currentDayValues(), main = "Timeline", xlab = "Date", ylab = "Value", col = "dodgerblue")
+        lines(currentDayValues()[,2], col = "darkseagreen", lwd = 5)
+        lines(currentDayValues()[,2]+100, col = "dodgerblue", lwd = 5)
+        legend(
+          "topright",
+          c(input$timelineOut, input$timelineIn),
+          fill = c("darkseagreen", "dodgerblue")
+        )
+      }
+    )
+    output$clickat <- renderText(
+      paste("click at ", input$timeline_click$x)
+    )
+    
     output$end <- renderText("end")
-    output$promo <- renderText("effects of a promotion")
   }
 }
 shinyApp(ui, server)

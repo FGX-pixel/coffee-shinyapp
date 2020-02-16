@@ -3,15 +3,15 @@
 ## prepare data tables
 
 # load data tables
-sales <- read.csv("April_Sales/201904 sales reciepts.csv")
-# customers <- read.csv("April_Sales/customer.csv")
-# dates <- read.csv("April_Sales/Dates.csv")
-# generations <- read.csv("April_Sales/generations.csv")
-outlets <- read.csv("April_Sales/sales_outlet.csv")
-pastries <- read.csv("April_Sales/pastry inventory.csv")
-products <- read.csv("April_Sales/product.csv")
-targets <- read.csv("April_Sales/sales targets.csv")
-# staff <- read.csv("April_Sales/staff.csv")
+sales <- read.csv("output/April_Sales/201904 sales reciepts.csv")
+# customers <- read.csv("output/April_Sales/customer.csv")
+# dates <- read.csv("output/April_Sales/Dates.csv")
+# generations <- read.csv("output/April_Sales/generations.csv")
+outlets <- read.csv("output/April_Sales/sales_outlet.csv")
+pastries <- read.csv("output/April_Sales/pastry inventory.csv")
+products <- read.csv("output/April_Sales/product.csv")
+targets <- read.csv("output/April_Sales/sales targets.csv")
+# staff <- read.csv("output/April_Sales/staff.csv")
 
 # join data
 outletSales <- merge(x=sales, y=products, by="product_id")
@@ -21,9 +21,17 @@ pastryInfo <- merge(x=pastries, y=products, by="product_id", all.x = TRUE)
 {
   ## create and append columns
   
+  # days
+  days <- unique(sales$transaction_date)
+  days <- days[order(days)]
+  
   # sales value
   salesValue <- outletSales$quantity*outletSales$unit_price
   outletSales <- data.frame(outletSales, salesValue)
+  
+  # promo value
+  promoValue <- outletSales$salesValue*as.numeric(outletSales$promo_item_yn=="Y")
+  outletSales <- data.frame(outletSales, promoValue)
   
   # waste value
   wasteValue <- pastryInfo$waste*pastryInfo$current_wholesale_price
