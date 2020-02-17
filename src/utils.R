@@ -3,22 +3,30 @@
 ## functions
 
 # aggregating general
-aggregate <- function(dta, check, whatString) {
+aggregate <- function(dta, check = TRUE, whatString) {
   return(sum(dta[check, whatString]))
 }
-
-dayAggValues <- function(dta, whatString) {
-  days <- unique(dta$transaction_date)
-  days <- days[order(days)]
-  aggVals <- c(1:length(days))
+dayAggregate <- function(dta, whatString, baseDta = dta) {
+  ans <- 1:length(days)
   for (i in 1:length(days)) {
-    # ldta <- dta[dta$transaction_date==days[i],]
-    # aggVals[i] <- sum(ldta[whatString])
-    aggVals[i] <- aggregate(dta, dta$transaction_date==days[i], whatString)
+    ans[i] <- aggregate(dta, baseDta$transaction_date==days[i], whatString)
   }
-  return(data.frame(days, aggVals))
+  return(ans)
 }
 
+dayAggValues <- function(dta, whatStrings, check = TRUE) {
+  ldta <- dta[check,]
+  ans <- matrix(nrow = length(days), ncol = length(whatStrings))
+  
+  valueDta <- sapply(whatStrings, selectValues, dta = ldta)
+  valueDta <- sapply(valueDta, rbind)
+  colnames(valueDta) <- whatStrings
+  for (i in 1:ncol(valueDta)) {
+    ans[,i] <- dayAggregate(valueDta, whatString = whatStrings[i], baseDta = ldta)
+  }
+  colnames(ans) <- whatStrings
+  return(data.frame(days, ans))
+}
 
 getInputs <- function(outletId) {
   lpromo <- outletSales[outletSales$promo_item_yn=="Y", c("sales_outlet_id", "promoValue")]
@@ -35,8 +43,14 @@ getInputs <- function(outletId) {
 
 # selecting
 selectOutletdata <- function(dta, store) {
+  # replace with selectValues
   return(dta[dta$sales_outlet_id==store,])
 }
+selectValues <- function(dta, whatString, check = TRUE) {
+  ldta <- dta[check,]
+  return(ldta[whatString])
+}
+
 
 selectDayAggValues <- function(dta, store, whatString) {
   ldta <- dayAggValues(selectOutletdata(dta, store), whatString)

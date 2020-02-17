@@ -36,22 +36,22 @@
 ## startup
 {
   # run prep file
-  source("prep_coffeedata.R", local = FALSE)
+  source("prep_coffeedata.R", local = TRUE)
   # functions
-  source("utils.R", local = FALSE)
+  source("utils.R", local = TRUE)
   # data
-  source("getTables.R", local = FALSE)
+  source("getTables.R", local = TRUE)
   
   
   ## scripts
   # map
-  source("getMap.R", local = FALSE)
+  source("getMap.R", local = TRUE)
   # dea-sim
-  source("dea_sim.R", local = FALSE)
+  source("dea_sim.R", local = TRUE)
   # diff in diff
-  source("DID.R", local = FALSE)
+  source("DID.R", local = TRUE)
   # promo
-  source("timeline.R", local = FALSE)
+  source("timeline.R", local = TRUE)
 }
 
 
@@ -133,7 +133,7 @@ library(shiny)
       ),
       column(
         width = 4,
-        "group info"
+        plotOutput("didbars")
       ),
       column(
         width = 4,
@@ -169,10 +169,10 @@ library(shiny)
                     )
         ),
         selectInput("timelineIn", 
-                    label = "Please select decision variable", 
+                    label = "Please select Intervention", 
                     list(
                       "Promotion" = "promo",
-                      "Displayed pastry quantity" = "pastries"
+                      "Pastries" = "pastries"
                     )
         ),
         numericInput("timelineNum", 
@@ -341,13 +341,30 @@ library(shiny)
     
     output$didplot <- renderPlot(
       {
-        plot(rbind(ctrlG, treatG), main = "", xlab = "Date", ylab = "Value")
-        lines(ctrlG[2], col = "darkseagreen", lwd = 5)
-        lines(treatG[2], col = "dodgerblue", lwd = 5)
+        plot(x = rep(unlist(days), 2), 
+             y = c(rep(0, length(days)), unlist(forDidPlot["ans"])), 
+             main = "Intervention Effect over Time", 
+             xlab = "Date", 
+             ylab = "% Target Value")
+        lines(rep(0, nrow(ctrlG)), col = "darkseagreen", lwd = 5)
+        lines(forDidPlot["ans"], col = "dodgerblue", lwd = 5)
         legend(
           "topright",
-          c("control", "promo"),
+          c("control", "intervention"),
           fill = c("darkseagreen", "dodgerblue")
+        )
+      }
+    )
+    
+    output$didbars <- renderPlot(
+      {
+        barplot(
+          main = "Effects in % on Target",
+          forDidBar,
+          names.arg = colnames(forDidBar),
+          # las = 2,
+          xpd = FALSE,
+          col = "dodgerblue"
         )
       }
     )
@@ -361,24 +378,33 @@ library(shiny)
     output$timelineText <- renderText("Timeline planning, (under construction)")
     
     # todo reactive aggregate dayvalues
+    timelineTarget <- reactive(dayAggValues(outletSales, 
+                                            input$timelineOut, 
+                                            outletSales$sales_outlet_id %in% input$timelineScope))
+    timelineDeci <- reactive(dayAggValues(outletSales, 
+                                            input$timelineIn, 
+                                            outletSales$sales_outlet_id %in% input$timelineScope))
+    
     # todo reactive segment selection and visual feedback
     # todo reactive prognosis and ma
     
     output$timeline <- renderPlot(
       {
-        plot(currentDayValues(), main = "Timeline", xlab = "Date", ylab = "Value", col = "darkseagreen")
-        plot(currentDayValues(), main = "Timeline", xlab = "Date", ylab = "Value", col = "dodgerblue")
-        lines(currentDayValues()[,2], col = "darkseagreen", lwd = 5)
-        lines(currentDayValues()[,2]+100, col = "dodgerblue", lwd = 5)
+        plot(timelineTarget(), 
+             main = "Timeline, please select Date for Intervention", 
+             xlab = "Date", 
+             ylab = "Value", 
+             col = "darkseagreen")
+        lines(timelineTarget()[,2], col = "darkseagreen", lwd = 5)
         legend(
           "topright",
-          c(input$timelineOut, input$timelineIn),
-          fill = c("darkseagreen", "dodgerblue")
+          c(input$timelineOut),
+          fill = c("darkseagreen")
         )
       }
     )
     output$clickat <- renderText(
-      paste("click at ", input$timeline_click$x)
+      paste("click at day ", round(as.numeric(input$timeline_click$x)))
     )
     
     output$end <- renderText("end")

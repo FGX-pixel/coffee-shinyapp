@@ -3,12 +3,13 @@
 # difference in difference
 
 # make data table usable in DID
-makeDIDdta <- function(dta, yString, controlTF, treatValuCol) {
-  llength <- nrow(dta)
-  didDta <- data.frame(dta[yString], 
-                       c(1:llength), 
+makeDIDdta <- function(dta, yString, treatString, controlTF, check = TRUE) {
+  ldta <- dayAggValues(dta, c(yString, treatString), check = check)
+  llength <- nrow(ldta)
+  didDta <- data.frame(ldta[yString], 
+                       c(0:(llength-1)), 
                        c(rep(as.numeric(!controlTF), llength)), 
-                       treatValuCol)
+                       ldta[treatString])
   colnames(didDta) <- c("y", "t", "treatYN", "treat")
   return(didDta)
 }
@@ -33,24 +34,54 @@ predictMonth <- function(didinfo, days, treatYN = TRUE) {
     ans[i] <- didinfo["(Intercept)"] +
       i*didinfo["t"] +
       as.numeric(treatYN)*didinfo["treatYN"] +
-      as.numeric(treatYN)*didinfo["treat"]*didinfo[5]
+      as.numeric(treatYN)*didinfo["treat"]*i
   }
   return(data.frame(days, ans))
+}
+didPlotDta <- function(control, treat) {
+  ans <- treat
+  ans["ans"] <- 100*(treat["ans"] - control["ans"])/control[1, "ans"]
+  return(ans)
+}
+didBarDta <- function(didinfo, control, treat) {
+  # total growth ctrl
+  growthCtrl <- 100*(control[nrow(control), "ans"]-control[1, "ans"])/control[1, "ans"]
+  # total growth treat
+  growthTreat <- 100*(treat[nrow(treat), "ans"]-treat[1, "ans"])/treat[1, "ans"]
+  # announcement/planning effect
+  apEffect <- 100*didinfo["treatYN"]/treat[1, "ans"]
+  # treatment effect
+  tEffect <- 100*didinfo[5]/treat[1, "ans"]
+  
+  ans <- c(growthCtrl, growthTreat, apEffect, tEffect)
+  names(ans) <- c("Default Growth", "Intervention Growth", "Planning Effect", "Intervention Effect")
+  return(ans)
 }
 
 # script
 {
-  dta3 <- selectOutletdata(outletSales, "3")
-  dta5 <- selectOutletdata(outletSales, "5")
-  dta8 <- selectOutletdata(outletSales, "8")
-  dta3 <- makeDIDdta(dta3, "salesValue", TRUE, dta3$promoValue)
-  dta5 <- makeDIDdta(dta5, "salesValue", FALSE, dta5$promoValue)
-  dta8 <- makeDIDdta(dta8, "salesValue", FALSE, dta8$promoValue)
+  dta3 <- makeDIDdta(dta = outletSales, 
+                     yString = "salesValue", 
+                     treatString = "promoValue", 
+                     controlTF = TRUE,
+                     check = outletSales$sales_outlet_id=="3")
+  dta5 <- makeDIDdta(dta = outletSales, 
+                     yString = "salesValue", 
+                     treatString = "promoValue", 
+                     controlTF = FALSE,
+                     check = outletSales$sales_outlet_id=="5")
+  dta8 <- makeDIDdta(dta = outletSales, 
+                     yString = "salesValue", 
+                     treatString = "promoValue", 
+                     controlTF = FALSE,
+                     check = outletSales$sales_outlet_id=="8")
   DIDdta <- rbind.data.frame(dta3, dta5, dta8)
   
   info <- DIDinfo(DIDdta)
   ctrlG <- predictMonth(info, days, treatYN = FALSE)
   treatG <- predictMonth(info, days, treatYN = TRUE)
+  forDidPlot <- didPlotDta(ctrlG, treatG)
+  forDidBar <- didBarDta(info, ctrlG, treatG)
 }
 
 
