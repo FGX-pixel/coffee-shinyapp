@@ -1,6 +1,6 @@
 
 
-## functions
+## functions, move to utils
 {
   getInputs <- function(outletId) {
     lpromo <- outletSales[outletSales$promo_item_yn=="Y", c("sales_outlet_id", "promoValue")]
@@ -162,10 +162,13 @@ library(shiny)
                     selected = c("3", "5", "8")
         ),
         selectInput("timelineOut", 
-                    label = "Please select target", 
+                    label = "Please select Graph", 
                     list(
                       "Sales in US$" = "salesValue",
-                      "total quantity sold" = "quantity"
+                      "Daily quantity sold in pcs" = "quantity", 
+                      "Promo value in US$" = "promoValue", 
+                      "Pastry waste in US$" = "wasteValue", 
+                      "Pastries on Display in US$" = "pastriesValue"
                     )
         ),
         selectInput("timelineIn", 
@@ -207,7 +210,7 @@ library(shiny)
     output$aggsales <- renderPlot(
       {
         plot(daysales, main = "Sales", xlab = "Date", ylab = "Sales in US$", col = "darkseagreen")
-        lines(daysales[,2], col = "darkseagreen", lwd = 5)
+        lines(daysales[,2], x = daysales[,1], col = "darkseagreen", lwd = 5)
       }
     )
     output$aggwaste <- renderPlot(
@@ -254,7 +257,7 @@ library(shiny)
     output$outletSales <- renderPlot(
       {
         plot(currentDayValues(), main = input$outletValue, xlab = "Date", ylab = "Value", col = "darkseagreen")
-        lines(currentDayValues()[,2], col = "darkseagreen", lwd = 5)
+        lines(currentDayValues()[,2], x = currentDayValues()[,1], col = "darkseagreen", lwd = 5)
       }
     )
     
@@ -346,8 +349,8 @@ library(shiny)
              main = "Intervention Effect over Time", 
              xlab = "Date", 
              ylab = "% Target Value")
-        lines(rep(0, nrow(ctrlG)), col = "darkseagreen", lwd = 5)
-        lines(forDidPlot["ans"], col = "dodgerblue", lwd = 5)
+        lines(rep(0, nrow(ctrlG)), x = ctrlG[,1], col = "darkseagreen", lwd = 5)
+        lines(forDidPlot[,"ans"], x = forDidPlot[,1], col = "dodgerblue", lwd = 5)
         legend(
           "topright",
           c("control", "intervention"),
@@ -378,12 +381,7 @@ library(shiny)
     output$timelineText <- renderText("Timeline planning, (under construction)")
     
     # todo reactive aggregate dayvalues
-    timelineTarget <- reactive(dayAggValues(outletSales, 
-                                            input$timelineOut, 
-                                            outletSales$sales_outlet_id %in% input$timelineScope))
-    timelineDeci <- reactive(dayAggValues(outletSales, 
-                                            input$timelineIn, 
-                                            outletSales$sales_outlet_id %in% input$timelineScope))
+    timelineTarget <- reactive(autoDayAgg(input$timelineOut, "sales_outlet_id", input$timelineScope))
     
     # todo reactive segment selection and visual feedback
     # todo reactive prognosis and ma
@@ -395,16 +393,11 @@ library(shiny)
              xlab = "Date", 
              ylab = "Value", 
              col = "darkseagreen")
-        lines(timelineTarget()[,2], col = "darkseagreen", lwd = 5)
-        legend(
-          "topright",
-          c(input$timelineOut),
-          fill = c("darkseagreen")
-        )
+        lines(timelineTarget()[,2], x = timelineTarget()[,1], col = "darkseagreen", lwd = 5)
       }
     )
     output$clickat <- renderText(
-      paste("click at day ", round(as.numeric(input$timeline_click$x)))
+      paste("click at day ", as.Date(round(input$timeline_click$x), origin = "1970-01-01"))
     )
     
     output$end <- renderText("end")

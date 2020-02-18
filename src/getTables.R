@@ -17,6 +17,12 @@ targets <- read.csv("output/April_Sales/sales targets.csv")
 outletSales <- merge(x=sales, y=products, by="product_id")
 pastryInfo <- merge(x=pastries, y=products, by="product_id", all.x = TRUE)
 
+# this should not be necessary but it is (consistent form of datetime)
+outletSales$transaction_date <- as.Date(outletSales$transaction_date)
+pastryInfo$transaction_date <- as.Date(pastryInfo$transaction_date, "%m/%d/%Y")
+pastryInfo$transaction_date <- as.Date(pastryInfo$transaction_date)
+
+
 # values of interest
 {
   ## create and append columns
@@ -24,6 +30,16 @@ pastryInfo <- merge(x=pastries, y=products, by="product_id", all.x = TRUE)
   # days
   days <- unique(sales$transaction_date)
   days <- days[order(days)]
+  days <- as.Date(days)
+  
+  # pastries
+  # waste value
+  wasteValue <- pastryInfo$waste*pastryInfo$current_wholesale_price
+  # total pastry value
+  pastriesValue <- pastryInfo$start_of_day*pastryInfo$current_wholesale_price
+  
+  # assemble pastries info dta
+  pastryInfo <- data.frame(pastryInfo, wasteValue, pastriesValue)
   
   # sales value
   salesValue <- outletSales$quantity*outletSales$unit_price
@@ -32,13 +48,6 @@ pastryInfo <- merge(x=pastries, y=products, by="product_id", all.x = TRUE)
   # promo value
   promoValue <- outletSales$salesValue*as.numeric(outletSales$promo_item_yn=="Y")
   outletSales <- data.frame(outletSales, promoValue)
-  
-  # waste value
-  wasteValue <- pastryInfo$waste*pastryInfo$current_wholesale_price
-  # total pastry value
-  pastriesValue <- pastryInfo$start_of_day*pastryInfo$current_wholesale_price
-  
-  pastryInfo <- data.frame(pastryInfo, wasteValue, pastriesValue)
   
   
   ## aggregated values

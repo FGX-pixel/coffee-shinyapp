@@ -9,11 +9,15 @@ aggregate <- function(dta, check = TRUE, whatString) {
 dayAggregate <- function(dta, whatString, baseDta = dta) {
   ans <- 1:length(days)
   for (i in 1:length(days)) {
+    # dont use, HUGE hit on performance!!!
+    # ans[i] <- aggregate(dta, as.Date(baseDta$transaction_date)==as.Date(days[i]), whatString)
+    
     ans[i] <- aggregate(dta, baseDta$transaction_date==days[i], whatString)
   }
   return(ans)
 }
 
+## aggregate higher
 dayAggValues <- function(dta, whatStrings, check = TRUE) {
   ldta <- dta[check,]
   ans <- matrix(nrow = length(days), ncol = length(whatStrings))
@@ -27,6 +31,27 @@ dayAggValues <- function(dta, whatStrings, check = TRUE) {
   colnames(ans) <- whatStrings
   return(data.frame(days, ans))
 }
+
+# aggAutoSelect
+autoSelectDta <- function(whatString) {
+  if (whatString %in% colnames(pastryInfo)) {
+    return(pastryInfo)
+  }
+  if (whatString %in% colnames(outletSales)) {
+    return(outletSales)
+  }
+  return(NULL)
+}
+# autoDayAgg
+autoDayAgg <- function(whatString, checkColString = "sales_outlet_id", checkEquals = c("3")) {
+  ldta <- autoSelectDta(whatString)
+  lcheckCol <- ldta[checkColString]
+  lcheck <- sapply(lcheckCol, "%in%", checkEquals)
+  
+  return(dayAggValues(ldta, whatString, lcheck))
+}
+
+
 
 getInputs <- function(outletId) {
   lpromo <- outletSales[outletSales$promo_item_yn=="Y", c("sales_outlet_id", "promoValue")]
